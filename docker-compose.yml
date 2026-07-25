@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  budget-alexishayat-me:
+    build: .
+    container_name: budget-alexishayat-me
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
