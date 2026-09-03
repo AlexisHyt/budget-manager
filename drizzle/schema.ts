@@ -5,6 +5,7 @@ import {
   integer,
   json,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -200,6 +201,43 @@ export const payments = pgTable(
   ],
 );
 
+export const tags = pgTable(
+  "tags",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    color: text("color").notNull().default("#6366f1"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("tags_user_id_idx").on(table.userId),
+    uniqueIndex("tags_user_id_name_idx").on(table.userId, table.name),
+  ],
+);
+
+export const subscriptionTags = pgTable(
+  "subscription_tags",
+  {
+    subscriptionId: text("subscription_id")
+      .notNull()
+      .references(() => subscriptions.id, { onDelete: "cascade" }),
+    tagId: text("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.subscriptionId, table.tagId] }),
+    index("subscription_tags_tag_id_idx").on(table.tagId),
+  ],
+);
+
 export const bankAccountRelations = relations(
   bankAccounts,
   ({ one, many }) => ({
@@ -224,16 +262,42 @@ export const incomesRelations = relations(incomes, ({ one }) => ({
   }),
 }));
 
-export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+export const subscriptionsRelations = relations(
+  subscriptions,
+  ({ one, many }) => ({
+    user: one(user, {
+      fields: [subscriptions.userId],
+      references: [user.id],
+    }),
+    bankAccount: one(bankAccounts, {
+      fields: [subscriptions.bankAccountId],
+      references: [bankAccounts.id],
+    }),
+    subscriptionTags: many(subscriptionTags),
+  }),
+);
+
+export const tagsRelations = relations(tags, ({ one, many }) => ({
   user: one(user, {
-    fields: [subscriptions.userId],
+    fields: [tags.userId],
     references: [user.id],
   }),
-  bankAccount: one(bankAccounts, {
-    fields: [subscriptions.bankAccountId],
-    references: [bankAccounts.id],
-  }),
+  subscriptionTags: many(subscriptionTags),
 }));
+
+export const subscriptionTagsRelations = relations(
+  subscriptionTags,
+  ({ one }) => ({
+    subscription: one(subscriptions, {
+      fields: [subscriptionTags.subscriptionId],
+      references: [subscriptions.id],
+    }),
+    tag: one(tags, {
+      fields: [subscriptionTags.tagId],
+      references: [tags.id],
+    }),
+  }),
+);
 
 export const paymentsRelations = relations(payments, ({ one }) => ({
   user: one(user, {
@@ -257,3 +321,11 @@ export type InsertSubscription = typeof subscriptions.$inferInsert;
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = typeof payments.$inferInsert;
+
+export type Tag = typeof tags.$inferSelect;
+export type InsertTag = typeof tags.$inferInsert;
+
+export type SubscriptionTag = typeof subscriptionTags.$inferSelect;
+export type InsertSubscriptionTag = typeof subscriptionTags.$inferInsert;
+
+export type SubscriptionWithTags = Subscription & { tags: Tag[] };

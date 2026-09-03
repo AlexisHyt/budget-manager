@@ -1,8 +1,12 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import {
+  type MonthScope,
+  MonthScopeToggle,
+} from "@/components/dashboard/month-scope-toggle";
+import { TagDots, type TagLike } from "@/components/dashboard/tag-badge";
 import { formatCurrency } from "@/lib/budget/utils";
-import { cn } from "@/lib/utils";
 import type { TCurrency } from "@/types/TCurrency";
 
 export interface DetailRow {
@@ -15,6 +19,7 @@ export interface DetailRow {
   bankAccountName: string;
   bankAccountColor: string;
   indicator: string | null;
+  tags: TagLike[];
   monthAmounts: Record<string, number | null>;
 }
 
@@ -43,7 +48,7 @@ export function DetailSpreadsheet({
   currentMonthKey,
   currency = "USD",
 }: DetailSpreadsheetProps) {
-  const [byAllScope, setByAllScope] = useState<"current" | "all">("current");
+  const [byAllScope, setByAllScope] = useState<MonthScope>("current");
 
   const visibleCols =
     byAllScope === "all"
@@ -76,32 +81,7 @@ export function DetailSpreadsheet({
             All subscriptions and payments, grouped by billing day
           </p>
         </div>
-        <div className="inline-flex rounded-md border border-border p-0.5">
-          <button
-            type="button"
-            onClick={() => setByAllScope("current")}
-            className={cn(
-              "rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
-              byAllScope === "current"
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:bg-muted/60",
-            )}
-          >
-            Current month
-          </button>
-          <button
-            type="button"
-            onClick={() => setByAllScope("all")}
-            className={cn(
-              "rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
-              byAllScope === "all"
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:bg-muted/60",
-            )}
-          >
-            All months
-          </button>
-        </div>
+        <MonthScopeToggle value={byAllScope} onChange={setByAllScope} />
       </div>
 
       {rows.length === 0 ? (
@@ -185,6 +165,7 @@ export function DetailSpreadsheet({
                           <span className="font-medium leading-tight">
                             {row.name}
                           </span>
+                          <TagDots tags={row.tags} />
                         </div>
                       </td>
 

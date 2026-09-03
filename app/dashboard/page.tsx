@@ -6,6 +6,7 @@ import {
   type DetailRow,
   DetailSpreadsheet,
 } from "@/components/dashboard/detail-spreadsheet";
+import { TagBreakdown } from "@/components/dashboard/tag-breakdown";
 import { formatCurrency, generateMonthKey } from "@/lib/budget/utils";
 import { cn } from "@/lib/utils";
 import type { TCurrency } from "@/types/TCurrency";
@@ -180,6 +181,15 @@ export default function DashboardPage() {
 
       <div className="space-y-4">
         <DetailSpreadsheet
+          rows={data.detailRows}
+          monthCols={monthCols}
+          currentMonthKey={currentMonthKey}
+          currency={currency}
+        />
+      </div>
+
+      <div className="space-y-4">
+        <TagBreakdown
           rows={data.detailRows}
           monthCols={monthCols}
           currentMonthKey={currentMonthKey}

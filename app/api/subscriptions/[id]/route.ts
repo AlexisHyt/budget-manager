@@ -3,6 +3,12 @@ import { type NextRequest, NextResponse } from "next/server";
 import { db } from "@/drizzle/db";
 import { subscriptions } from "@/drizzle/schema";
 import { requireSession } from "@/lib/auth/session";
+import {
+  getTagsForSubscription,
+  ownsAllTags,
+  parseTagIds,
+  setSubscriptionTags,
+} from "@/lib/budget/subscription-tags";
 
 const validSubscriptionFrequencies = [
   "monthly",
@@ -41,7 +47,10 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(subscription[0]);
+    return NextResponse.json({
+      ...subscription[0],
+      tags: await getTagsForSubscription(session.user.id, id),
+    });
   } catch (_error) {
     return NextResponse.json(
       { error: "Failed to fetch subscription" },
@@ -70,6 +79,7 @@ export async function PUT(
       imageUrl,
       active,
       indicator,
+      tagIds,
     } = await request.json();
 
     const updateData: any = {
@@ -103,6 +113,17 @@ export async function PUT(
       updateData.indicator = indicator;
     }
 
+    let requestedTagIds: string[] | null = null;
+    if (tagIds !== undefined) {
+      requestedTagIds = parseTagIds(tagIds);
+      if (requestedTagIds === null) {
+        return NextResponse.json({ error: "Invalid tags" }, { status: 400 });
+      }
+      if (!(await ownsAllTags(session.user.id, requestedTagIds))) {
+        return NextResponse.json({ error: "Unknown tag" }, { status: 400 });
+      }
+    }
+
     const updated = await db
       .update(subscriptions)
       .set(updateData)
@@ -121,7 +142,14 @@ export async function PUT(
       );
     }
 
-    return NextResponse.json(updated[0]);
+    if (requestedTagIds !== null) {
+      await setSubscriptionTags(id, requestedTagIds);
+    }
+
+    return NextResponse.json({
+      ...updated[0],
+      tags: await getTagsForSubscription(session.user.id, id),
+    });
   } catch (_error) {
     return NextResponse.json(
       { error: "Failed to update subscription" },

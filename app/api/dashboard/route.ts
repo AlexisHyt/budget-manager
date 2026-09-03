@@ -9,6 +9,7 @@ import {
   user,
 } from "@/drizzle/schema";
 import { requireSession } from "@/lib/auth/session";
+import { getTagsBySubscriptionId } from "@/lib/budget/subscription-tags";
 import {
   generateMonthKey,
   getMonthsInRange,
@@ -41,6 +42,7 @@ export async function GET(request: NextRequest) {
       userSubscriptions,
       userPayments,
       userData,
+      tagsBySubscriptionId,
     ] = await Promise.all([
       db
         .select()
@@ -53,6 +55,7 @@ export async function GET(request: NextRequest) {
         .where(eq(subscriptions.userId, session.user.id)),
       db.select().from(payments).where(eq(payments.userId, session.user.id)),
       db.select().from(user).where(eq(user.id, session.user.id)),
+      getTagsBySubscriptionId(session.user.id),
     ]);
 
     const months = getMonthsInRange(startDate, endDate);
@@ -253,6 +256,7 @@ export async function GET(request: NextRequest) {
       bankAccountName: string;
       bankAccountColor: string;
       indicator: string | null;
+      tags: Array<{ id: string; name: string; color: string }>;
       monthAmounts: Record<string, number | null>;
     }> = [];
 
@@ -286,6 +290,11 @@ export async function GET(request: NextRequest) {
         bankAccountName: acc?.name ?? "Unknown",
         bankAccountColor: acc?.color ?? "#888888",
         indicator: sub.indicator ?? null,
+        tags: (tagsBySubscriptionId.get(sub.id) ?? []).map((tag) => ({
+          id: tag.id,
+          name: tag.name,
+          color: tag.color,
+        })),
         monthAmounts,
       });
     });
@@ -312,6 +321,7 @@ export async function GET(request: NextRequest) {
         bankAccountName: acc?.name ?? "Unknown",
         bankAccountColor: acc?.color ?? "#888888",
         indicator: null,
+        tags: [],
         monthAmounts,
       });
     });

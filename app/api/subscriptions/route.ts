@@ -3,6 +3,13 @@ import { type NextRequest, NextResponse } from "next/server";
 import { db } from "@/drizzle/db";
 import { subscriptions } from "@/drizzle/schema";
 import { requireSession } from "@/lib/auth/session";
+import {
+  getTagsBySubscriptionId,
+  getTagsForSubscription,
+  ownsAllTags,
+  parseTagIds,
+  setSubscriptionTags,
+} from "@/lib/budget/subscription-tags";
 
 const validSubscriptionFrequencies = [
   "monthly",
@@ -19,13 +26,21 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const userSubscriptions = await db
-      .select()
-      .from(subscriptions)
-      .where(eq(subscriptions.userId, session.user.id))
-      .orderBy(subscriptions.name);
+    const [userSubscriptions, tagsBySubscriptionId] = await Promise.all([
+      db
+        .select()
+        .from(subscriptions)
+        .where(eq(subscriptions.userId, session.user.id))
+        .orderBy(subscriptions.name),
+      getTagsBySubscriptionId(session.user.id),
+    ]);
 
-    return NextResponse.json(userSubscriptions);
+    return NextResponse.json(
+      userSubscriptions.map((sub) => ({
+        ...sub,
+        tags: tagsBySubscriptionId.get(sub.id) ?? [],
+      })),
+    );
   } catch (_error) {
     return NextResponse.json(
       { error: "Failed to fetch subscriptions" },
@@ -49,6 +64,7 @@ export async function POST(request: NextRequest) {
       bankAccountId,
       imageUrl,
       indicator,
+      tagIds,
     } = await request.json();
 
     if (!name || !amount || !frequency || !startDate || !bankAccountId) {
@@ -65,6 +81,14 @@ export async function POST(request: NextRequest) {
     }
     if (indicator && !validIndicators.includes(indicator)) {
       return NextResponse.json({ error: "Invalid indicator" }, { status: 400 });
+    }
+
+    const requestedTagIds = tagIds === undefined ? [] : parseTagIds(tagIds);
+    if (requestedTagIds === null) {
+      return NextResponse.json({ error: "Invalid tags" }, { status: 400 });
+    }
+    if (!(await ownsAllTags(session.user.id, requestedTagIds))) {
+      return NextResponse.json({ error: "Unknown tag" }, { status: 400 });
     }
 
     const id = `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -85,7 +109,17 @@ export async function POST(request: NextRequest) {
       })
       .returning();
 
-    return NextResponse.json(newSubscription[0], { status: 201 });
+    if (requestedTagIds.length > 0) {
+      await setSubscriptionTags(id, requestedTagIds);
+    }
+
+    return NextResponse.json(
+      {
+        ...newSubscription[0],
+        tags: await getTagsForSubscription(session.user.id, id),
+      },
+      { status: 201 },
+    );
   } catch (_error) {
     return NextResponse.json(
       { error: "Failed to create subscription" },
