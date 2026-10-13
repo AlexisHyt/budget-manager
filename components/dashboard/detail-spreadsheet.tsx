@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useState, useSyncExternalStore } from "react";
 import {
   type MonthScope,
   MonthScopeToggle,
@@ -42,6 +42,18 @@ interface DetailSpreadsheetProps {
   currency?: TCurrency;
 }
 
+const noopSubscribe = () => () => {};
+
+// Read the day of month on the client only to avoid hydration mismatches
+// (server and browser may be in different timezones).
+function useTodayDay(): number | null {
+  return useSyncExternalStore(
+    noopSubscribe,
+    () => new Date().getDate(),
+    () => null,
+  );
+}
+
 export function DetailSpreadsheet({
   rows,
   monthCols,
@@ -49,6 +61,7 @@ export function DetailSpreadsheet({
   currency = "USD",
 }: DetailSpreadsheetProps) {
   const [byAllScope, setByAllScope] = useState<MonthScope>("current");
+  const today = useTodayDay();
 
   const visibleCols =
     byAllScope === "all"
@@ -61,7 +74,10 @@ export function DetailSpreadsheet({
     if (!dayGroups.has(row.day)) dayGroups.set(row.day, []);
     dayGroups.get(row.day)!.push(row);
   });
-  const sortedDays = [...dayGroups.keys()].sort((a, b) => a - b);
+  // Always show today's day, even without items, so we can see where we are
+  const days = [...dayGroups.keys()];
+  if (today != null && !dayGroups.has(today)) days.push(today);
+  const sortedDays = days.sort((a, b) => a - b);
 
   // Column totals (sum of all active amounts per month)
   const colTotals: Record<string, number> = {};
@@ -122,104 +138,119 @@ export function DetailSpreadsheet({
               </tr>
             </thead>
             <tbody>
-              {sortedDays.map((day) => (
-                <Fragment key={`day-${day}`}>
-                  {/* Day separator */}
-                  <tr>
-                    <td className="sticky left-0 z-10 bg-muted px-3 py-1.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                      Day {day}
-                    </td>
-                    <td className="sticky left-[180px] z-10 bg-muted" />
-                    {visibleCols.map((_, index) => (
+              {sortedDays.map((day) => {
+                const isToday = day === today;
+                const separatorBg = isToday ? "bg-today-strong" : "bg-muted";
+                const cellBg = isToday ? "bg-today" : "bg-card";
+                return (
+                  <Fragment key={`day-${day}`}>
+                    {/* Day separator */}
+                    <tr>
                       <td
-                        key={index}
-                        className="sticky left-[180px] z-10 bg-muted"
+                        className={`sticky left-0 z-10 ${separatorBg} px-3 py-1.5 text-xs font-semibold uppercase tracking-widest ${
+                          isToday ? "text-foreground" : "text-muted-foreground"
+                        }`}
+                      >
+                        Day {day}
+                        {isToday && " · Today"}
+                      </td>
+                      <td
+                        className={`sticky left-[180px] z-10 ${separatorBg}`}
                       />
-                    ))}
-                  </tr>
-
-                  {/* Items for this day */}
-                  {dayGroups.get(day)!.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="border-b border-border/40 transition-colors hover:bg-muted/20"
-                    >
-                      {/* Name — sticky */}
-                      <td
-                        className="sticky left-0 z-10 bg-card px-3 py-2.5"
-                        style={{ minWidth: "180px" }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-base leading-none">
-                            {row.type === "subscription" ? "🔄" : "💳"}
-                          </span>
-                          {row.indicator && (
-                            <span
-                              className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
-                              style={{
-                                backgroundColor: indicatorColors[row.indicator],
-                              }}
-                              title={row.indicator}
-                            />
-                          )}
-                          <span className="font-medium leading-tight">
-                            {row.name}
-                          </span>
-                          <TagDots tags={row.tags} />
-                        </div>
-                      </td>
-
-                      {/* Account */}
-                      <td
-                        className="sticky left-[180px] z-10 bg-card px-3 py-2.5"
-                        style={{ minWidth: "130px" }}
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className="inline-block h-2 w-2 shrink-0 rounded-full"
-                            style={{ backgroundColor: row.bankAccountColor }}
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {row.bankAccountName}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Month amounts */}
-                      {visibleCols.map((col) => {
-                        const amount = row.monthAmounts[col.key];
-                        return (
-                          <td
-                            key={col.key}
-                            className={`px-3 py-2.5 text-right ${
-                              col.key === currentMonthKey ? "font-medium" : ""
-                            }`}
-                            style={{ minWidth: "90px" }}
-                          >
-                            {amount != null ? (
-                              formatCurrency(
-                                amount,
-                                currency as
-                                  | "USD"
-                                  | "EUR"
-                                  | "JPY"
-                                  | "GBP"
-                                  | "CHF"
-                                  | "CAD"
-                                  | "AUD",
-                              )
-                            ) : (
-                              <span className="text-muted-foreground/30">
-                                –
-                              </span>
-                            )}
-                          </td>
-                        );
-                      })}
+                      {visibleCols.map((col) => (
+                        <td
+                          key={col.key}
+                          className={`sticky left-[180px] z-10 ${separatorBg}`}
+                        />
+                      ))}
                     </tr>
-                  ))}
-                </Fragment>
-              ))}
+
+                    {/* Items for this day */}
+                    {(dayGroups.get(day) ?? []).map((row) => (
+                      <tr
+                        key={row.id}
+                        className={`border-b border-border/40 transition-colors ${
+                          isToday ? "bg-today" : "hover:bg-muted/20"
+                        }`}
+                      >
+                        {/* Name — sticky */}
+                        <td
+                          className={`sticky left-0 z-10 ${cellBg} px-3 py-2.5`}
+                          style={{ minWidth: "180px" }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-base leading-none">
+                              {row.type === "subscription" ? "🔄" : "💳"}
+                            </span>
+                            {row.indicator && (
+                              <span
+                                className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+                                style={{
+                                  backgroundColor:
+                                    indicatorColors[row.indicator],
+                                }}
+                                title={row.indicator}
+                              />
+                            )}
+                            <span className="font-medium leading-tight">
+                              {row.name}
+                            </span>
+                            <TagDots tags={row.tags} />
+                          </div>
+                        </td>
+
+                        {/* Account */}
+                        <td
+                          className={`sticky left-[180px] z-10 ${cellBg} px-3 py-2.5`}
+                          style={{ minWidth: "130px" }}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="inline-block h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: row.bankAccountColor }}
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              {row.bankAccountName}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Month amounts */}
+                        {visibleCols.map((col) => {
+                          const amount = row.monthAmounts[col.key];
+                          return (
+                            <td
+                              key={col.key}
+                              className={`px-3 py-2.5 text-right ${
+                                col.key === currentMonthKey ? "font-medium" : ""
+                              }`}
+                              style={{ minWidth: "90px" }}
+                            >
+                              {amount != null ? (
+                                formatCurrency(
+                                  amount,
+                                  currency as
+                                    | "USD"
+                                    | "EUR"
+                                    | "JPY"
+                                    | "GBP"
+                                    | "CHF"
+                                    | "CAD"
+                                    | "AUD",
+                                )
+                              ) : (
+                                <span className="text-muted-foreground/30">
+                                  –
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </Fragment>
+                );
+              })}
 
               {/* Totals footer */}
               <tr className="border-t-2 border-border">
