@@ -14,8 +14,8 @@
     "format:fix": "biome check . --write"
   },
   "dependencies": {
-    "@better-auth/api-key": "1.6.23",
-    "@better-auth/core": "1.6.23",
+    "@better-auth/api-key": "1.7.13",
+    "@better-auth/core": "1.7.13",
     "better-auth": "^1.7.13",
     "chart.js": "^4.5.1",
     "dotenv": "^17.4.2",
