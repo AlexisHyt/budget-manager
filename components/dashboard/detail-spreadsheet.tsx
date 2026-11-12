@@ -1,6 +1,12 @@
 "use client";
 
-import { Fragment, useState, useSyncExternalStore } from "react";
+import {
+  Fragment,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   type MonthScope,
   MonthScopeToggle,
@@ -62,6 +68,47 @@ export function DetailSpreadsheet({
 }: DetailSpreadsheetProps) {
   const [byAllScope, setByAllScope] = useState<MonthScope>("current");
   const today = useTodayDay();
+  const cardRef = useRef<HTMLDivElement>(null);
+  const todayRowRef = useRef<HTMLTableRowElement>(null);
+  const [todayTop, setTodayTop] = useState<number | null>(null);
+
+  // Keep the floating "left this month" panel aligned with the Today row
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    const update = () => {
+      const tr = todayRowRef.current;
+      setTodayTop(
+        tr
+          ? tr.getBoundingClientRect().top - card.getBoundingClientRect().top
+          : null,
+      );
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [today, byAllScope, rows]);
+
+  // Amount still to be debited this month, per account (days after today)
+  const remainingByAccount = new Map<string, RemainingAccount>();
+  if (today != null) {
+    rows.forEach((row) => {
+      const amount = row.monthAmounts[currentMonthKey];
+      if (row.day <= today || amount == null || amount === 0) return;
+      const entry = remainingByAccount.get(row.bankAccountId) ?? {
+        id: row.bankAccountId,
+        name: row.bankAccountName,
+        color: row.bankAccountColor,
+        amount: 0,
+      };
+      entry.amount += amount;
+      remainingByAccount.set(row.bankAccountId, entry);
+    });
+  }
+  const remainingAccounts = [...remainingByAccount.values()].sort(
+    (a, b) => b.amount - a.amount,
+  );
 
   const visibleCols =
     byAllScope === "all"
@@ -89,7 +136,23 @@ export function DetailSpreadsheet({
   });
 
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
+    <div
+      ref={cardRef}
+      className="relative rounded-lg border border-border bg-card p-6"
+    >
+      {today != null && todayTop != null && rows.length > 0 && (
+        <div
+          className="absolute right-full mr-4 hidden w-56 min-[1680px]:block"
+          style={{ top: todayTop }}
+        >
+          <RemainingByAccount
+            accounts={remainingAccounts}
+            today={today}
+            currency={currency}
+          />
+        </div>
+      )}
+
       <div className="mb-4 flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold">Detailed breakdown</h2>
@@ -99,6 +162,16 @@ export function DetailSpreadsheet({
         </div>
         <MonthScopeToggle value={byAllScope} onChange={setByAllScope} />
       </div>
+
+      {today != null && rows.length > 0 && (
+        <div className="mb-4 max-w-sm min-[1680px]:hidden">
+          <RemainingByAccount
+            accounts={remainingAccounts}
+            today={today}
+            currency={currency}
+          />
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -145,7 +218,7 @@ export function DetailSpreadsheet({
                 return (
                   <Fragment key={`day-${day}`}>
                     {/* Day separator */}
-                    <tr>
+                    <tr ref={isToday ? todayRowRef : undefined}>
                       <td
                         className={`sticky left-0 z-10 ${separatorBg} px-3 py-1.5 text-xs font-semibold uppercase tracking-widest ${
                           isToday ? "text-foreground" : "text-muted-foreground"
@@ -286,6 +359,63 @@ export function DetailSpreadsheet({
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  );
+}
+
+interface RemainingAccount {
+  id: string;
+  name: string;
+  color: string;
+  amount: number;
+}
+
+function RemainingByAccount({
+  accounts,
+  today,
+  currency,
+}: {
+  accounts: RemainingAccount[];
+  today: number;
+  currency: TCurrency;
+}) {
+  const total = accounts.reduce((sum, a) => sum + a.amount, 0);
+  return (
+    <div className="rounded-lg border border-today-strong bg-today p-3 text-xs shadow-sm">
+      <div className="mb-2 font-semibold uppercase tracking-widest text-foreground">
+        Left this month
+        <span className="ml-1 font-normal normal-case tracking-normal text-muted-foreground">
+          (after day {today})
+        </span>
+      </div>
+      {accounts.length === 0 ? (
+        <p className="text-muted-foreground">Nothing left this month</p>
+      ) : (
+        <ul className="space-y-1">
+          {accounts.map((account) => (
+            <li key={account.id} className="flex items-center gap-1.5">
+              <span
+                className="inline-block h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: account.color }}
+              />
+              <span className="truncate text-muted-foreground">
+                {account.name}
+              </span>
+              <span className="ml-auto font-medium tabular-nums">
+                {formatCurrency(account.amount, currency)}
+              </span>
+            </li>
+          ))}
+          {accounts.length > 1 && (
+            <li className="mt-1.5 flex items-center border-t border-today-strong pt-1.5 font-semibold">
+              Total
+              <span className="ml-auto tabular-nums">
+                {formatCurrency(total, currency)}
+              </span>
+            </li>
+          )}
+        </ul>
       )}
     </div>
   );
