@@ -1,5 +1,5 @@
 # Build stage
-FROM oven/bun:1.2.22-alpine AS builder
+FROM oven/bun:1.4.0-alpine AS builder
 WORKDIR /app
 
 COPY package.json bun.lock ./
@@ -9,7 +9,7 @@ COPY . .
 RUN bun run build
 
 # Run stage
-FROM oven/bun:1.2.22-alpine
+FROM oven/bun:1.4.0-alpine
 WORKDIR /app
 
 ENV NODE_ENV=production
